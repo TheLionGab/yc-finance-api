@@ -14,8 +14,9 @@ Cada item: `symbol`, `name`, `value`, `prev`, `delta`, `currency`, `unit`,
     23:00 UTC e à noite a variação fica perto de 0%; a página usa a
     AwesomeAPI antes, e esta serve de reserva.
   - Contratos agrícolas (`dayChange`, mês explícito): se o último
-    negócio foi no pregão diurno (06:00 a 18:00 na bolsa) e está
-    parado há mais de 1 h, contra o fechamento do dia útil anterior
+    negócio foi no pregão diurno (06:00 a 18:00 ET) e foi a partir da
+    liquidação (14:00 ET) ou está parado há mais de 1 h, contra o
+    fechamento do dia útil anterior
     (barras diárias). O Yahoo troca a referência na liquidação e o
     algodão ficaria 0,00% horas depois de cair 4,8%. Série com buraco
     ou sem barras: `null`. Negócio à noite pertence ao pregão seguinte:

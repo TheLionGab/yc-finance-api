@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import handler from "../api/quotes.js";
-import { ALL, GROUPS, FRESH_MS, STALE_DAYS, chartUrl, lastSessionClose, needsBars, normalize, previousClose, priceAgo } from "../lib/quote.js";
+import { ALL, GROUPS, FRESH_MS, SETTLE_HOUR, STALE_DAYS, chartUrl, lastSessionClose, needsBars, normalize, previousClose, priceAgo } from "../lib/quote.js";
 
 const chart = (meta, timestamp, close, open) => ({
   chart: { result: [{ meta, timestamp: timestamp || [], indicators: { quote: [{ close: close || [], open: open || [] }] } }] }
@@ -44,6 +44,28 @@ test("algodão parado desde a liquidação: variação do dia contra o fechament
   near(q.delta, -4.8272, 0.001);
   assert.equal(q.value, 78.86);
   assert.equal(q.currency, "USc");
+});
+
+test("algodão logo depois da liquidação (14:18 ET): +5, +30 e +59 min já usam barras, não ~0,00%", () => {
+  const t = sec("2026-09-29T18:18:00Z");
+  const ref = chart({ instrumentType: "FUTURE", regularMarketPrice: 78.86, regularMarketTime: t, gmtoffset: -14400, chartPreviousClose: 78.86 });
+  const days = chart({ gmtoffset: -14400 }, [sec("2026-09-25T04:00:00Z"), sec("2026-09-28T04:00:00Z"), t], [82.71, 82.86, 78.86]);
+  const spec = { sym: "CTZ26.NYB", name: "Algodão Dez/26", dayChange: true };
+  for (const min of [5, 30, 59, 61, 300]) {
+    const now = t * 1000 + min * 60000;
+    assert.equal(needsBars(ref, spec, now), true, min + " min");
+    near(normalize(ref, spec, days, now).delta, -4.8272, 0.001);
+  }
+});
+
+test("negócio de manhã (10:00 ET): recente usa a referência do Yahoo, parado há mais de 1 h usa barras", () => {
+  const t = sec("2026-09-29T14:00:00Z");
+  const ref = chart({ instrumentType: "FUTURE", regularMarketPrice: 1300, regularMarketTime: t, gmtoffset: -14400, chartPreviousClose: 1290 });
+  const spec = { sym: "ZSX26.CBT", name: "Soja Nov/26", dayChange: true };
+  assert.equal(needsBars(ref, spec, t * 1000 + 30 * 60000), false);
+  assert.equal(needsBars(ref, spec, t * 1000 + FRESH_MS), false);
+  assert.equal(needsBars(ref, spec, t * 1000 + FRESH_MS + 1), true);
+  assert.equal(SETTLE_HOUR, 14);
 });
 
 test("soja em sessão noturna (negócio há minutos): contra a liquidação de terça, não contra segunda", () => {
@@ -120,7 +142,7 @@ test("lastSessionClose: fechamento zero ou nulo na barra anterior devolve null",
 test("contrato sem negócio há mais de STALE_DAYS: sem variação, marcado, sem pedir barras", () => {
   const t = sec("2026-09-16T17:12:00Z");
   const ref = chart({ instrumentType: "FUTURE", regularMarketPrice: 77.09, regularMarketTime: t, gmtoffset: -14400, chartPreviousClose: 76.2 });
-  const spec = { sym: "CTZ28.NYB", name: "Algodão Dez/28" };
+  const spec = { sym: "CTZ28.NYB", name: "Algodão Dez/28", dayChange: true };
   assert.equal(needsBars(ref, spec, NOW), false);
   const q = normalize(ref, spec, null, NOW);
   assert.equal(q.stale, true);
@@ -130,13 +152,9 @@ test("contrato sem negócio há mais de STALE_DAYS: sem variação, marcado, sem
   assert.equal(normalize(ref, spec, null, t * 1000 + (STALE_DAYS - 1) * 86400000).stale, false);
 });
 
-test("pregão diurno: até FRESH_MS usa a referência do Yahoo, depois usa as barras; fora do diurno nunca", () => {
+test("janela do pregão diurno (06:00 a 18:00 ET): fora dela nunca usa barras", () => {
   const spec = { sym: "X", name: "X", dayChange: true };
-  const dia = sec("2026-09-29T18:00:00Z"); // 14:00 em Nova York
-  const ref = chart({ instrumentType: "FUTURE", regularMarketPrice: 10, regularMarketTime: dia, gmtoffset: -14400, chartPreviousClose: 9 });
-  assert.equal(needsBars(ref, spec, dia * 1000 + FRESH_MS), false);
-  assert.equal(needsBars(ref, spec, dia * 1000 + FRESH_MS + 1), true);
-  assert.equal(needsBars(ref, { sym: "X", name: "X" }, dia * 1000 + 2 * FRESH_MS), false);
+  assert.equal(needsBars(chart({ instrumentType: "FUTURE", regularMarketPrice: 10, regularMarketTime: sec("2026-09-29T14:00:00Z"), gmtoffset: -14400 }), { sym: "X", name: "X" }, sec("2026-09-29T22:00:00Z") * 1000), false);
   for (const [iso, esperado] of [["2026-09-29T09:59:00Z", false], ["2026-09-29T10:00:00Z", true], ["2026-09-29T21:59:00Z", true], ["2026-09-29T22:00:00Z", false], ["2026-09-30T04:00:00Z", false]]) {
     const r2 = chart({ instrumentType: "FUTURE", regularMarketPrice: 10, regularMarketTime: sec(iso), gmtoffset: -14400, chartPreviousClose: 9 });
     assert.equal(needsBars(r2, spec, sec(iso) * 1000 + 3 * 3600000), esperado, iso);
