@@ -209,3 +209,18 @@ test("universo: sem símbolo repetido, todo item com nome, sem escala escondida"
   assert.ok(ALL.filter((s) => s.dayChange).every((s) => !s.sym.includes("=F")));
   for (const g of ["global", "b3", "agro", "crypto", "fx"]) assert.ok(GROUPS[g].length > 0);
 });
+
+// Forma real medida em 30/09/2026 (Yahoo v8 chart, bolsa CBT).
+test("Chicago: trigo, farelo e óleo de soja com unidade, moeda e sem escala escondida", () => {
+  const by = Object.fromEntries(GROUPS.agro.map((s) => [s.sym, s]));
+  for (const s of ["ZWZ26.CBT", "ZWH27.CBT"]) assert.deepEqual([by[s].unit, by[s].cur], ["¢/bu", "USc"], s);
+  for (const s of ["ZMZ26.CBT", "ZMH27.CBT"]) assert.deepEqual([by[s].unit, by[s].cur], ["US$/t curta", "USD"], s);
+  for (const s of ["ZLZ26.CBT", "ZLH27.CBT"]) assert.deepEqual([by[s].unit, by[s].cur], ["¢/lb", "USc"], s);
+  assert.ok(GROUPS.agro.filter((s) => s.sym.endsWith(".CBT")).every((s) => s.dayChange === true));
+  const t = sec("2026-09-30T12:03:00Z");
+  const farelo = normalize(chart({ instrumentType: "FUTURE", regularMarketPrice: 361.2, regularMarketTime: t, gmtoffset: -14400, chartPreviousClose: 359, currency: "USD" }), by["ZMZ26.CBT"], null, t * 1000 + 60000);
+  assert.equal(farelo.value, 361.2);
+  assert.equal(farelo.currency, "USD");
+  assert.equal(farelo.unit, "US$/t curta");
+  near(farelo.delta, 0.6128, 0.001);
+});
