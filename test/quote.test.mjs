@@ -1,79 +1,91 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import handler from "../api/quotes.js";
-import { ALL, GROUPS, STALE_DAYS, chartUrl, lastSessionClose, normalize, previousClose, priceAgo } from "../lib/quote.js";
+import { ALL, GROUPS, FRESH_MS, STALE_DAYS, chartUrl, lastSessionClose, needsBars, normalize, previousClose, priceAgo } from "../lib/quote.js";
 
 const chart = (meta, timestamp, close, open) => ({
   chart: { result: [{ meta, timestamp: timestamp || [], indicators: { quote: [{ close: close || [], open: open || [] }] } }] }
 });
 const near = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, a + " != " + b);
-const NOW = 1790728800 * 1000; // 30/09/2026 00:40 UTC
+const sec = (iso) => Date.parse(iso) / 1000;
+const NOW = Date.parse("2026-09-30T01:12:00Z"); // noite de 29/09 em Nova York
 
 // Formas reais medidas em 29/09/2026 (Yahoo v8 chart).
-test("ação dos EUA: barra do dia sem fechamento não vira dia anterior", () => {
-  const j = chart(
-    { regularMarketPrice: 329.4, regularMarketTime: 1790712000, gmtoffset: -14400, chartPreviousClose: 341.07 },
-    [1790343000, 1790602200, 1790688600],
-    [341.07, 338.4, null]
-  );
-  const q = normalize(j, { sym: "AAPL", name: "Apple" }, null, NOW);
+test("ação: referência é o fechamento anterior do Yahoo; não pede barras", () => {
+  const ref = chart({ instrumentType: "EQUITY", regularMarketPrice: 329.4, regularMarketTime: sec("2026-09-29T20:00:00Z"), chartPreviousClose: 338.4 });
+  const spec = { sym: "AAPL", name: "Apple" };
+  assert.equal(needsBars(ref, spec, NOW), false);
+  const q = normalize(ref, spec, null, NOW);
   assert.equal(q.prev, 338.4);
   near(q.delta, -2.6596);
-  assert.equal(q.ts, 1790712000000);
   assert.equal(q.stale, false);
+  assert.equal(q.ts, sec("2026-09-29T20:00:00Z") * 1000);
 });
 
-test("B3: barra do dia já com o preço atual é ignorada", () => {
-  const j = chart(
-    { regularMarketPrice: 42.3, regularMarketTime: 1790719577, gmtoffset: -10800 },
-    [1790341200, 1790600400, 1790686800],
-    [42.13, 41.71, 42.3]
-  );
-  const q = normalize(j, { sym: "ITUB4.SA", name: "Itaú" }, null, NOW);
-  assert.equal(q.prev, 41.71);
-  near(q.delta, 1.4145);
+test("índice com buraco na série diária (Nikkei) usa só a referência do Yahoo", () => {
+  const ref = chart({ instrumentType: "INDEX", regularMarketPrice: 66135.77, regularMarketTime: sec("2026-09-30T01:00:00Z"), chartPreviousClose: 65481.27 });
+  const q = normalize(ref, { sym: "^N225", name: "Nikkei" }, null, NOW);
+  assert.equal(q.prev, 65481.27);
+  near(q.delta, 0.9989, 0.001);
 });
 
-test("algodão CTZ26: Yahoo já virou a referência para o próprio preço; o dia caiu 4,83%", () => {
-  const j = chart(
-    { regularMarketPrice: 78.86, regularMarketTime: 1790705931, gmtoffset: -14400, chartPreviousClose: 78.86 },
-    [1790395200, 1790568000, 1790654400, 1790705931],
-    [83.31, 82.86, null, 78.86]
+test("algodão parado desde a liquidação: variação do dia contra o fechamento de ontem (-4,83%)", () => {
+  const t = sec("2026-09-29T18:18:00Z");
+  const ref = chart({ instrumentType: "FUTURE", regularMarketPrice: 78.86, regularMarketTime: t, gmtoffset: -14400, chartPreviousClose: 78.86 });
+  const days = chart(
+    { gmtoffset: -14400 },
+    [sec("2026-09-24T04:00:00Z"), sec("2026-09-25T04:00:00Z"), sec("2026-09-28T04:00:00Z"), t],
+    [83.31, 82.71, 82.86, 78.86]
   );
-  const q = normalize(j, { sym: "CTZ26.NYB", name: "Algodão Dez/26", unit: "¢/lb", cur: "USc" }, null, NOW);
+  const spec = { sym: "CTZ26.NYB", name: "Algodão Dez/26", unit: "¢/lb", cur: "USc" };
+  assert.equal(needsBars(ref, spec, NOW), true);
+  const q = normalize(ref, spec, days, NOW);
   assert.equal(q.prev, 82.86);
   near(q.delta, -4.8272, 0.001);
   assert.equal(q.value, 78.86);
   assert.equal(q.currency, "USc");
 });
 
-test("soja em ¢/bu, sem escala; variação contra a barra do dia anterior", () => {
-  const j = chart(
-    { regularMarketPrice: 1295.5, regularMarketTime: 1790728273, gmtoffset: -14400 },
-    [1790395200, 1790568000, 1790654400, 1790728273],
-    [1319.0, 1288.25, null, 1295.5]
-  );
-  const q = normalize(j, { sym: "ZSX26.CBT", name: "Soja Nov/26", unit: "¢/bu", cur: "USc" }, null, NOW);
-  assert.equal(q.value, 1295.5);
-  assert.equal(q.prev, 1288.25);
-  near(q.delta, 0.5628, 0.001);
+test("soja em sessão noturna (negócio há minutos): contra a liquidação de terça, não contra segunda", () => {
+  const t = sec("2026-09-30T01:02:00Z");
+  const ref = chart({ instrumentType: "FUTURE", regularMarketPrice: 1295.75, regularMarketTime: t, gmtoffset: -14400, chartPreviousClose: 1297.75 });
+  const spec = { sym: "ZSX26.CBT", name: "Soja Nov/26", unit: "¢/bu", cur: "USc" };
+  assert.equal(needsBars(ref, spec, NOW), false);
+  const q = normalize(ref, spec, null, NOW);
+  assert.equal(q.value, 1295.75);
+  assert.equal(q.prev, 1297.75);
+  near(q.delta, -0.1541, 0.001);
   assert.equal(q.unit, "¢/bu");
 });
 
-test("buraco na série (Nikkei): não pula para dois dias atrás, usa a referência do Yahoo", () => {
-  const j = chart(
-    { regularMarketPrice: 66367.15, regularMarketTime: 1790728170, gmtoffset: 32400 },
-    [1790467200, 1790553600, 1790640000, 1790726400],
-    [65000, 65877.6, null, 66367.15]
+test("futuro à noite: ouro e Brent também contra a liquidação (não contra dois pregões)", () => {
+  const t = sec("2026-09-30T01:02:00Z");
+  const mk = (px, prev) => chart({ instrumentType: "FUTURE", regularMarketPrice: px, regularMarketTime: t, gmtoffset: -14400, chartPreviousClose: prev });
+  near(normalize(mk(4211.4, 4179.7), { sym: "GC=F", name: "Ouro" }, null, NOW).delta, 0.7584, 0.001);
+  near(normalize(mk(96.22, 96.16), { sym: "BZ=F", name: "Brent" }, null, NOW).delta, 0.0624, 0.001);
+});
+
+test("futuro parado com buraco na série: cai para a referência do Yahoo, nunca dois dias", () => {
+  const t = sec("2026-09-29T17:37:00Z");
+  const ref = chart({ instrumentType: "FUTURE", regularMarketPrice: 1272.75, regularMarketTime: t, gmtoffset: -14400, chartPreviousClose: 1271 });
+  const days = chart({ gmtoffset: -14400 }, [sec("2026-09-25T04:00:00Z"), sec("2026-09-28T04:00:00Z"), t], [1282.75, null, 1272.75]);
+  const q = normalize(ref, { sym: "ZSH28.CBT", name: "Soja Mar/28" }, days, NOW);
+  assert.equal(q.prev, 1271);
+});
+
+test("câmbio: variação do dia (fechamento de ontem), não a referência que o Yahoo troca às 23:00 UTC", () => {
+  const t = sec("2026-09-30T00:44:00Z");
+  const ref = chart({ instrumentType: "CURRENCY", regularMarketPrice: 5.2031, regularMarketTime: t, gmtoffset: 3600, chartPreviousClose: 5.2031 });
+  const days = chart(
+    { gmtoffset: 3600 },
+    [sec("2026-09-27T23:00:00Z"), sec("2026-09-28T23:00:00Z"), sec("2026-09-29T23:00:00Z"), t],
+    [5.19, 5.2229, null, 5.2031]
   );
-  // Sem referência: sem variação, nunca a de dois dias.
-  const sem = normalize(j, { sym: "^N225", name: "Nikkei" }, null, NOW);
-  assert.equal(sem.prev, null);
-  assert.equal(sem.delta, null);
-  const ref = chart({ regularMarketPrice: 66367.15, regularMarketTime: 1790728170, chartPreviousClose: 65481.27 });
-  const com = normalize(j, { sym: "^N225", name: "Nikkei" }, ref, NOW);
-  assert.equal(com.prev, 65481.27);
-  near(com.delta, 1.3527, 0.001);
+  const spec = { sym: "BRL=X", name: "USD/BRL" };
+  assert.equal(needsBars(ref, spec, NOW), true);
+  const q = normalize(ref, spec, days, NOW);
+  assert.equal(q.prev, 5.2229);
+  near(q.delta, -0.3792, 0.001);
 });
 
 test("lastSessionClose: fechamento zero ou nulo na barra anterior devolve null", () => {
@@ -82,25 +94,30 @@ test("lastSessionClose: fechamento zero ou nulo na barra anterior devolve null",
   assert.equal(lastSessionClose([], [], 1172800, 0), null);
 });
 
-test("contrato sem negócio há mais de STALE_DAYS: sem variação e marcado", () => {
-  const t = 1789579920; // 16/09/2026
-  const j = chart(
-    { regularMarketPrice: 77.09, regularMarketTime: t, gmtoffset: -14400, chartPreviousClose: 76.2 },
-    [t - 86400 * 2, t],
-    [76.92, null]
-  );
-  const q = normalize(j, { sym: "CTZ28.NYB", name: "Algodão Dez/28" }, null, NOW);
+test("contrato sem negócio há mais de STALE_DAYS: sem variação, marcado, sem pedir barras", () => {
+  const t = sec("2026-09-16T17:12:00Z");
+  const ref = chart({ instrumentType: "FUTURE", regularMarketPrice: 77.09, regularMarketTime: t, gmtoffset: -14400, chartPreviousClose: 76.2 });
+  const spec = { sym: "CTZ28.NYB", name: "Algodão Dez/28" };
+  assert.equal(needsBars(ref, spec, NOW), false);
+  const q = normalize(ref, spec, null, NOW);
   assert.equal(q.stale, true);
   assert.equal(q.delta, null);
   assert.equal(q.prev, null);
   assert.equal(q.value, 77.09);
-  assert.equal(normalize(j, { sym: "X", name: "X" }, null, t * 1000 + (STALE_DAYS - 1) * 86400000).stale, false);
+  assert.equal(normalize(ref, spec, null, t * 1000 + (STALE_DAYS - 1) * 86400000).stale, false);
+});
+
+test("futuro no limite de 1 h: até FRESH_MS usa a referência do Yahoo, depois usa as barras", () => {
+  const t = sec("2026-09-29T20:00:00Z");
+  const ref = chart({ instrumentType: "FUTURE", regularMarketPrice: 10, regularMarketTime: t, chartPreviousClose: 9 });
+  assert.equal(needsBars(ref, { sym: "X", name: "X" }, t * 1000 + FRESH_MS), false);
+  assert.equal(needsBars(ref, { sym: "X", name: "X" }, t * 1000 + FRESH_MS + 1), true);
 });
 
 test("cripto: variação contra o preço de 24 h antes, pela abertura da barra", () => {
-  const t = 1790728912;
+  const t = sec("2026-09-30T01:00:00Z");
   const q = normalize(
-    chart({ regularMarketPrice: 83506.49, regularMarketTime: t, gmtoffset: 0 }, [t - 90000, t - 86400 - 900, t - 86400 + 900, t - 900], [], [80000, 84000, 83900, 83500]),
+    chart({ instrumentType: "CRYPTOCURRENCY", regularMarketPrice: 83506.49, regularMarketTime: t, chartPreviousClose: 83624.79 }, [t - 90000, t - 86400 - 900, t - 86400 + 900, t - 900], [], [80000, 84000, 83900, 83500]),
     { sym: "BTC-USD", name: "Bitcoin", h24: true },
     null,
     NOW
@@ -120,10 +137,10 @@ test("previousClose e resposta sem resultado ou sem preço", () => {
 });
 
 test("chartUrl: janela certa por modo (range errado troca a referência sem quebrar nada)", () => {
-  assert.match(chartUrl("AAPL", "days"), /interval=1d&range=1mo$/);
   assert.match(chartUrl("AAPL", "ref"), /interval=1d&range=1d$/);
+  assert.match(chartUrl("AAPL", "days"), /interval=1d&range=1mo$/);
   assert.match(chartUrl("BTC-USD", "h24"), /interval=15m&range=2d$/);
-  assert.match(chartUrl("^GSPC", "days"), /chart\/%5EGSPC\?/);
+  assert.match(chartUrl("^GSPC", "ref"), /chart\/%5EGSPC\?/);
 });
 
 test("grupo inexistente ou herdado do Object devolve 400", async () => {

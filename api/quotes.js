@@ -1,4 +1,4 @@
-import { ALL, GROUPS, chartUrl, normalize } from "../lib/quote.js";
+import { ALL, GROUPS, chartUrl, needsBars, normalize } from "../lib/quote.js";
 
 export const config = { runtime: "edge" };
 
@@ -10,7 +10,7 @@ async function getChart(sym, mode) {
   let err;
   for (let i = 0; i < 2; i++) {
     try {
-      const res = await fetch(chartUrl(sym, mode), { headers: HEADERS });
+      const res = await fetch(chartUrl(sym, mode), { headers: HEADERS, signal: AbortSignal.timeout(8000) });
       if (res.status === 404) throw Object.assign(new Error("Yahoo " + sym + " sem dados"), { final: true });
       if (!res.ok) throw new Error("Yahoo " + sym + " HTTP " + res.status);
       return await res.json();
@@ -25,12 +25,9 @@ async function getChart(sym, mode) {
 async function fetchOne(spec) {
   const hit = memo.get(spec.sym);
   if (hit && Date.now() - hit.t < TTL) return hit.v;
-  const json = await getChart(spec.sym, spec.h24 ? "h24" : "days");
-  let out = normalize(json, spec);
-  if (out.prev == null && !spec.h24 && !out.stale) {
-    const ref = await getChart(spec.sym, "ref").catch(() => null);
-    if (ref) out = normalize(json, spec, ref);
-  }
+  const json = await getChart(spec.sym, spec.h24 ? "h24" : "ref");
+  const days = needsBars(json, spec, Date.now()) ? await getChart(spec.sym, "days").catch(() => null) : null;
+  const out = normalize(json, spec, days, Date.now());
   memo.set(spec.sym, { t: Date.now(), v: out });
   return out;
 }
