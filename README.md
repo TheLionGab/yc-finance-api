@@ -25,8 +25,12 @@ Cada item: `symbol`, `name`, `value`, `prev`, `delta`, `currency`, `unit`,
   Sem referência válida, `delta` e `prev` vêm `null`; nunca 0 inventado.
 - `stale: true`: última negociação com mais de 5 dias (contrato sem
   negócio). `value` é o último preço e `ts` diz quando; `delta` é `null`.
-- Unidades sem escala escondida: algodão em ¢/lb, soja e milho em
-  ¢/bu, ouro US$/oz, Brent US$/bbl.
+- Unidades sem escala escondida: algodão e óleo de soja em ¢/lb, soja,
+  milho e trigo em ¢/bu, farelo de soja em US$/t curta (tonelada curta,
+  907 kg), ouro US$/oz, Brent US$/bbl.
+- Chicago (CBOT) no grupo `agro`: soja, milho, trigo, farelo e óleo de
+  soja, todos com mês explícito (`dayChange`). Contrato vencido sai da
+  lista, como o resto.
 - Símbolo sem dados (contrato vencido) sai com `value: null` e
   `error: "falha"`.
 
