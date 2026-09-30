@@ -6,11 +6,11 @@ const HEADERS = { "User-Agent": "Mozilla/5.0 (compatible; YCFinance/1.0)", Accep
 const TTL = 30000;
 const memo = new Map();
 
-async function getChart(sym, mode) {
+async function getChart(sym, mode, tries) {
   let err;
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < (tries || 2); i++) {
     try {
-      const res = await fetch(chartUrl(sym, mode), { headers: HEADERS, signal: AbortSignal.timeout(8000) });
+      const res = await fetch(chartUrl(sym, mode), { headers: HEADERS, signal: AbortSignal.timeout(5000) });
       if (res.status === 404) throw Object.assign(new Error("Yahoo " + sym + " sem dados"), { final: true });
       if (!res.ok) throw new Error("Yahoo " + sym + " HTTP " + res.status);
       return await res.json();
@@ -26,7 +26,7 @@ async function fetchOne(spec) {
   const hit = memo.get(spec.sym);
   if (hit && Date.now() - hit.t < TTL) return hit.v;
   const json = await getChart(spec.sym, spec.h24 ? "h24" : "ref");
-  const days = needsBars(json, spec, Date.now()) ? await getChart(spec.sym, "days").catch(() => null) : null;
+  const days = needsBars(json, spec, Date.now()) ? await getChart(spec.sym, "days", 1).catch(() => null) : null;
   const out = normalize(json, spec, days, Date.now());
   memo.set(spec.sym, { t: Date.now(), v: out });
   return out;

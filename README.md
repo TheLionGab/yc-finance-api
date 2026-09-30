@@ -7,18 +7,20 @@ Cotações do Yuri Coimbra Finance: Yahoo Finance via edge function, com CORS.
 Cada item: `symbol`, `name`, `value`, `prev`, `delta`, `currency`, `unit`,
 `stale`, `ts`.
 
-- `delta`: variação em %, com referência por tipo de instrumento
-  (`meta.instrumentType` do Yahoo):
-  - ação, índice e demais: contra o fechamento anterior do Yahoo
-    (`chartPreviousClose` de `range=1d`), o mesmo número do site deles;
-  - futuro com negócio há menos de 1 h (sessão noturna incluída):
-    idem, ou seja, contra a última liquidação;
-  - futuro parado há mais de 1 h e câmbio: contra o fechamento do dia
-    útil anterior (barras diárias). O Yahoo troca a referência na
-    liquidação (o algodão ficaria 0,00% horas depois de cair 4,8%) e a
-    do câmbio às 23:00 UTC. Barra anterior sem fechamento (buraco na
-    série): cai para a referência do Yahoo, nunca para dois dias atrás;
-  - cripto: contra o preço de 24 h antes (abertura da barra de 15 min).
+- `delta`: variação em %.
+  - Padrão (ações, índices, câmbio, ouro, Brent): contra o fechamento
+    anterior do Yahoo (`chartPreviousClose` de `range=1d`), o mesmo
+    número do site deles. No câmbio o Yahoo troca a referência às
+    23:00 UTC e à noite a variação fica perto de 0%; a página usa a
+    AwesomeAPI antes, e esta serve de reserva.
+  - Contratos agrícolas (`dayChange`, mês explícito): se o último
+    negócio foi no pregão diurno (06:00 a 18:00 na bolsa) e está
+    parado há mais de 1 h, contra o fechamento do dia útil anterior
+    (barras diárias). O Yahoo troca a referência na liquidação e o
+    algodão ficaria 0,00% horas depois de cair 4,8%. Série com buraco
+    ou sem barras: `null`. Negócio à noite pertence ao pregão seguinte:
+    vale a referência do Yahoo (contra a liquidação), parado ou não.
+  - Cripto: contra o preço de 24 h antes (abertura da barra de 15 min).
   Sem referência válida, `delta` e `prev` vêm `null`; nunca 0 inventado.
 - `stale: true`: última negociação com mais de 5 dias (contrato sem
   negócio). `value` é o último preço e `ts` diz quando; `delta` é `null`.
