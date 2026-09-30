@@ -22,8 +22,6 @@ Cada item: `symbol`, `name`, `value`, `prev`, `delta`, `currency`, `unit`,
   Sem referência válida, `delta` e `prev` vêm `null`; nunca 0 inventado.
 - `stale: true`: última negociação com mais de 5 dias (contrato sem
   negócio). `value` é o último preço e `ts` diz quando; `delta` é `null`.
-- Cripto: variação contra o preço de 24 h antes (abertura da barra de
-  15 min).
 - Unidades sem escala escondida: algodão em ¢/lb, soja e milho em
   ¢/bu, ouro US$/oz, Brent US$/bbl.
 - Símbolo sem dados (contrato vencido) sai com `value: null` e
