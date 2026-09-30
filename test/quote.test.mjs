@@ -218,9 +218,20 @@ test("Chicago: trigo, farelo e óleo de soja com unidade, moeda e sem escala esc
   for (const s of ["ZLZ26.CBT", "ZLH27.CBT"]) assert.deepEqual([by[s].unit, by[s].cur], ["¢/lb", "USc"], s);
   assert.ok(GROUPS.agro.filter((s) => s.sym.endsWith(".CBT")).every((s) => s.dayChange === true));
   const t = sec("2026-09-30T12:03:00Z");
-  const farelo = normalize(chart({ instrumentType: "FUTURE", regularMarketPrice: 361.2, regularMarketTime: t, gmtoffset: -14400, chartPreviousClose: 359, currency: "USD" }), by["ZMZ26.CBT"], null, t * 1000 + 60000);
+  const farelo = normalize(chart({ instrumentType: "FUTURE", regularMarketPrice: 361.2, regularMarketTime: t, gmtoffset: -14400, chartPreviousClose: 359 }), by["ZMZ26.CBT"], null, t * 1000 + 60000);
   assert.equal(farelo.value, 361.2);
   assert.equal(farelo.currency, "USD");
   assert.equal(farelo.unit, "US$/t curta");
   near(farelo.delta, 0.6128, 0.001);
+});
+
+const MES = { F: "Jan", G: "Fev", H: "Mar", J: "Abr", K: "Mai", M: "Jun", N: "Jul", Q: "Ago", U: "Set", V: "Out", X: "Nov", Z: "Dez" };
+const PRODUTO = { CT: "Algodão", ZS: "Soja", ZC: "Milho", ZW: "Trigo", ZM: "Farelo de soja", ZL: "Óleo de soja" };
+
+test("contratos agrícolas: o nome diz o produto e o mês que o símbolo diz", () => {
+  for (const s of GROUPS.agro) {
+    const m = s.sym.match(/^(CT|ZS|ZC|ZW|ZM|ZL)([FGHJKMNQUVXZ])(\d{2})\.(NYB|CBT)$/);
+    assert.ok(m, "símbolo fora do padrão: " + s.sym);
+    assert.equal(s.name, PRODUTO[m[1]] + " " + MES[m[2]] + "/" + m[3], s.sym);
+  }
 });
