@@ -1,25 +1,19 @@
-import { ALL, GROUPS, normalize } from "../lib/quote.js";
+import { ALL, GROUPS, chartUrl, normalize } from "../lib/quote.js";
 
 export const config = { runtime: "edge" };
 
-const YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/";
 const HEADERS = { "User-Agent": "Mozilla/5.0 (compatible; YCFinance/1.0)", Accept: "application/json" };
 const TTL = 30000;
 const memo = new Map();
 
-async function fetchOne(spec) {
-  const hit = memo.get(spec.sym);
-  if (hit && Date.now() - hit.t < TTL) return hit.v;
-  const url = YAHOO + encodeURIComponent(spec.sym) + (spec.h24 ? "?interval=15m&range=2d" : "?interval=1d&range=1d");
+async function getChart(sym, mode) {
   let err;
   for (let i = 0; i < 2; i++) {
     try {
-      const res = await fetch(url, { headers: HEADERS });
-      if (res.status === 404) throw Object.assign(new Error("Yahoo " + spec.sym + " sem dados"), { final: true });
-      if (!res.ok) throw new Error("Yahoo " + spec.sym + " HTTP " + res.status);
-      const out = normalize(await res.json(), spec);
-      memo.set(spec.sym, { t: Date.now(), v: out });
-      return out;
+      const res = await fetch(chartUrl(sym, mode), { headers: HEADERS });
+      if (res.status === 404) throw Object.assign(new Error("Yahoo " + sym + " sem dados"), { final: true });
+      if (!res.ok) throw new Error("Yahoo " + sym + " HTTP " + res.status);
+      return await res.json();
     } catch (e) {
       err = e;
       if (e.final) break;
@@ -28,10 +22,23 @@ async function fetchOne(spec) {
   throw err;
 }
 
+async function fetchOne(spec) {
+  const hit = memo.get(spec.sym);
+  if (hit && Date.now() - hit.t < TTL) return hit.v;
+  const json = await getChart(spec.sym, spec.h24 ? "h24" : "days");
+  let out = normalize(json, spec);
+  if (out.prev == null && !spec.h24 && !out.stale) {
+    const ref = await getChart(spec.sym, "ref").catch(() => null);
+    if (ref) out = normalize(json, spec, ref);
+  }
+  memo.set(spec.sym, { t: Date.now(), v: out });
+  return out;
+}
+
 export default async function handler(req) {
   if (req.method === "OPTIONS") return new Response(null, { status: 204 });
   const group = new URL(req.url).searchParams.get("group") || "global";
-  const list = group === "all" ? ALL : GROUPS[group];
+  const list = group === "all" ? ALL : Object.hasOwn(GROUPS, group) ? GROUPS[group] : null;
   if (!list) {
     return new Response(JSON.stringify({ error: "grupo invalido" }), {
       status: 400,
