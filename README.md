@@ -6,9 +6,12 @@ Cotações do Yuri Coimbra Finance: Yahoo Finance via edge function, com CORS.
 
 Cada item: `symbol`, `name`, `value`, `prev`, `delta`, `currency`, `unit`, `ts`.
 
-- `delta` é a variação em % contra o último fechamento de um pregão
-  anterior ao dia da cotação (fuso da bolsa). Sem fechamento anterior
-  válido, `delta` e `prev` vêm `null`; nunca 0 inventado.
+- `delta` é a variação em % contra o fechamento anterior no critério do
+  Yahoo (`chartPreviousClose` com `range=1d`, igual ao
+  `regularMarketPreviousClose` do endpoint de cotação deles). Com range
+  maior o Yahoo devolve o fechamento de antes do intervalo inteiro, por
+  isso a API pede sempre `range=1d`. Sem fechamento anterior válido,
+  `delta` e `prev` vêm `null`; nunca 0 inventado.
 - Cripto (`h24`): variação contra o preço de 24 h antes.
 - Soja e milho vêm do Yahoo em centavos por bushel e saem em US$/bu
   (`div: 100`). Algodão fica em ¢/lb.

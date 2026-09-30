@@ -10,7 +10,7 @@ const memo = new Map();
 async function fetchOne(spec) {
   const hit = memo.get(spec.sym);
   if (hit && Date.now() - hit.t < TTL) return hit.v;
-  const url = YAHOO + encodeURIComponent(spec.sym) + (spec.h24 ? "?interval=15m&range=2d" : "?interval=1d&range=1mo");
+  const url = YAHOO + encodeURIComponent(spec.sym) + (spec.h24 ? "?interval=15m&range=2d" : "?interval=1d&range=1d");
   let err;
   for (let i = 0; i < 2; i++) {
     try {
